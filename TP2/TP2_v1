@@ -1,0 +1,172 @@
+# Basic Animation Framework
+import numpy as np
+import cv2
+import os
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
+from tkinter import *
+
+####################################
+# customize these functions
+####################################
+
+def init(data):
+    data.margin = data.height//10
+    data.isHelper = False
+    data.isStatr = False 
+    data.helper = []
+
+def mousePressed(event, data):
+    # use event.x and event.y
+    pass
+
+def keyPressed(event, data):
+    # use event.char and event.keysym
+    if event.keysym == "h":
+        data.isHelper = True
+        data.helper.append((data.width-data.margin,data.height-data.margin,
+                            data.margin,data.margin,'pink',data.width//2,data.height//3,
+                            "This is a lane detection program! \n \t         Instruction:\n"
+                            "1.Press 'S'in starting screen to start. \n 2.Choose the video you want to test on. \n" 
+                            "3. Press 'b' to go back to start menu"))
+
+    elif event.keysym == "b":
+        data.isHelper == False
+        data.helper.pop()
+    elif event.keysym == "s":
+        def canny_detect(img):
+            grayimg = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            blur = cv2.GaussianBlur(grayimg,(5,5),0)
+            cannyimg = cv2.Canny(blur,50,150)
+            return cannyimg
+
+        def ROI(img):
+            height = img.shape[0]
+            width =  img.shape[1]
+            region = np.array([
+                      [(0,height),(width/2,height/2),(width,height)]
+                      ],np.int32)
+                              
+            blackMask = np.zeros_like(img)
+            cv2.fillPoly(blackMask, region, 255)
+            masked = cv2.bitwise_and(img,blackMask)
+            return masked
+        def line_draw(img,lines):
+            if lines is None:
+                return
+            height = img.shape[0]
+            width = img.shape[1]
+            image = np.copy(img)
+            line_img = np.zeros((height,width,3), dtype = np.uint8)
+            for line in lines:
+                x1,y1,x2,y2 = line.reshape(4)
+                cv2.line(line_img,
+                        (x1,y1),
+                        (x2,y2),
+                         [0,255,0], 
+                         3)
+            return line_img
+            #img = cv2.addWeighted(img,0.8,line_img,1.0,0.0)
+            #return img
+
+        def coord(image,parameters):
+            slope,intercept = parameters
+            # slope = parameters[0]
+            # intercept = parameters[1]
+            height = image.shape[0]
+            y1 = height
+            y2 = int(y1*0.6)
+            #y = mx+b  --> x = (y-b)/m
+            x1 = int((y1-intercept)/slope)
+            x2 = int((y2-intercept)/slope)
+            return np.array([x1,y1,x2,y2])
+
+
+        #Lane optimazition
+        def avg_slope(img,lines):
+            left = []
+            right = []
+            for line in lines:
+                x1,y1,x2,y2 = line.reshape(4)
+                param = np.polyfit((x1,x2),(y1,y2),1)
+                slope = param[0]
+                intercept = param[1]        
+                if slope > 0:
+                    right.append((slope,intercept))
+                else:
+                    left.append((slope,intercept))
+            right_avg = np.average(right, axis = 0)
+            left_avg = np.average(left, axis = 0)        
+            right_line = coord(img,right_avg)
+            left_line = coord(img,left_avg)
+            return np.array([left_line, right_line])
+
+
+
+
+        cap = cv2.VideoCapture("Tp_images\Test.mp4")
+        while(cap.isOpened()):
+            _, frame = cap.read()
+            canny = canny_detect(frame)
+            cropped = ROI(canny)
+            show_line = cv2.HoughLinesP(cropped,2,np.pi/180, 100, np.array([]), minLineLength = 40, maxLineGap = 150)
+            avg_line = avg_slope(frame,show_line)
+            line_image = line_draw(frame,avg_line)
+            combined = cv2.addWeighted(frame,0.8,line_image,1.0,0.0)
+            cv2.imshow('hello', combined)
+            cv2.waitKey(1)
+            
+
+def redrawAll(canvas, data):
+    # draw in canvas
+    canvas.create_text(data.width//2, data.margin, text = "Welcome to Lane Detection!")
+    canvas.create_text(data.width//2,data.margin*4, text = "Press 's' to start \nPressed 'h' for help")
+    if data.isHelper == True:
+        if len(data.helper) != 0:
+            x1,y1,x2,y2,color,p,q,text = data.helper[0]
+            canvas.create_rectangle(x1,y1,x2,y2, fill = color)
+            canvas.create_text(p,q,text = text)
+
+####################################
+# use the run function as-is
+####################################
+
+def run(width=300, height=300):
+    def redrawAllWrapper(canvas, data):
+        canvas.delete(ALL)
+        canvas.create_rectangle(0, 0, data.width, data.height,
+                                fill='white', width=0)
+        redrawAll(canvas, data)
+        canvas.update()
+
+    def mousePressedWrapper(event, canvas, data):
+        mousePressed(event, data)
+        redrawAllWrapper(canvas, data)
+
+    def keyPressedWrapper(event, canvas, data):
+        keyPressed(event, data)
+        redrawAllWrapper(canvas, data)
+
+    # Set up data and call init
+    class Struct(object): pass
+    data = Struct()
+    data.width = width
+    data.height = height
+    root = Tk()
+    root.resizable(width=False, height=False) # prevents resizing window
+    init(data)
+    # create the root and the canvas
+    canvas = Canvas(root, width=data.width, height=data.height)
+    canvas.configure(bd=0, highlightthickness=0)
+    canvas.pack()
+    # set up events
+    root.bind("<Button-1>", lambda event:
+                            mousePressedWrapper(event, canvas, data))
+    root.bind("<Key>", lambda event:
+                            keyPressedWrapper(event, canvas, data))
+    redrawAllWrapper(canvas, data)
+    # and launch the app
+    root.mainloop()  # blocks until window is closed
+    print("bye!")
+
+run(800, 600)
