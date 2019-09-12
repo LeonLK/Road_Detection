@@ -1,0 +1,9 @@
+-This is a lane detection program that detects roads via the feed from the car's dash camera.
+-This program allows you to choose different test videos and see how it detetcts the lane in front of the car.
+-A basic car detection feature is also implemented for user to explore
+-In the program user can choose to only see lane detection or only car detection or both at the same time.
+-RUN TP3 ON PYTHON AND NOTHING ELSE
+-In the file attached, everything should be in its place and the user just need to simply run the code as it is without changing any of the files/folders in the main file.
+-** The video test files are sent by email. User just need to move the Tp_images(video file folder) into the TP3 folder and everything should be ready to go. 
+-** If the videos come separately, then move the 3 mp4 files into a folder name "Tp_images" and move this folder into TP3 folder. 
+-Libaries used: openCV, numpy, os, matplotlib, tkinter

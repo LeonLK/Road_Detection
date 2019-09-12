@@ -1,0 +1,394 @@
+# Basic Animation Framework
+import numpy as np
+import cv2
+import os
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
+from tkinter import *
+
+def init(data):
+    data.margin = data.height//10
+    data.isHelper = False
+    data.isStart = False 
+    data.chosen = False
+    data.laneDetect = False
+    data.carDetect = False
+    data.both = False
+    data.helper = []
+    data.startScreen = []
+    data.chooseScreen = []
+
+def mousePressed(event, data):
+# use event.x and event.y
+    pass
+
+def keyPressed(event, data):
+
+    if event.keysym == "h":
+        data.isHelper = True
+        data.helper.append((data.width-data.margin,data.height-data.margin,
+        data.margin,data.margin,'pink',data.width//2,data.height//3,
+        "This is a lane detection program! \n \t         Instruction:\n"
+        "1.Press 'S'in starting screen to start. \n2.Choose the video you want to test on. \n" 
+        "3. Press 'b' to go back to start menu"))
+
+    elif event.keysym == "b" and data.isHelper == True:
+        data.isHelper == False
+        data.isStart == False
+        data.chosen == False
+        if data.helper != []:
+            data.helper.pop()
+    elif event.keysym == "s":
+        data.chosen = True
+        data.startScreen.append((data.width-data.margin,data.height-data.margin,
+        data.margin,data.margin,'#222930',data.width//2,data.height//3, 
+        "\t Please choose a demo video you want to test on! \n\n \t         Select by pressing the number keys\n\n"   #background #4EB1BA
+        "1. project_video_1.mp4 [~30 seconds] (curved road) |Recommended| \n\n2. project_video_2.mp4 [~15 seconds] (slightly cuved road) \n\n"  ###e9e9e9
+        "3. project_video_3.mp4 [~5 seconds] (straight road)"))
+    elif data.isStart == True and event.keysym == "b":
+        data.isStart = False
+        if data.chooseScreen != []:
+            data.chooseScreen.pop()
+    elif data.chosen == True and event.keysym == 'b':
+        data.chosen = False
+        if data.startScreen != []:
+            data.startScreen.pop()
+    elif event.keysym == '1':
+        data.video = "Tp_images\project_video.mp4"
+        data.isStart = True
+        data.chooseScreen.append((data.width-data.margin,data.height-data.margin,
+        data.margin,data.margin,'pink',data.width//2,data.height//3,
+        "Press 'r' for road detection only \n"
+        "Press 't' for car detection only \nPress'y' for both \n\n\nPress 'esc' to quit while playing" ))
+    elif event.keysym == '2':
+        data.video = "Tp_images\Test4.mp4"
+        data.isStart = True
+        data.chooseScreen.append((data.width-data.margin,data.height-data.margin,
+        data.margin,data.margin,'pink',data.width//2,data.height//3,
+        "Press 'r' for road detection only \n"
+        "Press 't' for car detection only \nPress'y' for both \n\n\nPress 'esc' to quit while playing" ))
+    elif event.keysym == '3':
+        data.video = "Tp_images\Test3.mp4"
+        data.isStart = True
+        data.chooseScreen.append((data.width-data.margin,data.height-data.margin,
+        data.margin,data.margin,'pink',data.width//2,data.height//3,
+        "Press 'r' for road detection only \n"
+        "Press 't' for car detection only \nPress'y' for both \n\n\nPress 'esc' to quit while playing" ))
+    elif event.keysym == 'r' and data.isStart == True:
+        def canny_detect(img):
+            grayimg = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            blur = cv2.GaussianBlur(grayimg,(5,5),0)
+            cannyimg = cv2.Canny(blur,50,10)
+            return cannyimg
+        def ROI(img):
+            width = img.shape[1]
+            height = img.shape[0]
+            shape = np.array([[0, height], [width, height], [int(0.55*width), int(0.6*height)], [int(0.45*width), int(0.6*height)]])
+            mask = np.zeros_like(img)
+
+            if len(img.shape) > 2:
+
+                numChan = img.shape[2]
+                black_mask = (255,) * numChan
+            else:
+                black_mask = 255
+
+                cv2.fillPoly(mask, np.int32([shape]), black_mask)
+                masked = cv2.bitwise_and(img, mask)
+                return masked
+
+        def line_draw(img, lines, thickness=5):
+            Rslope, Lslope, right_int, left_int = [],[],[],[]
+            
+            for line in lines:
+                for x1,y1,x2,y2 in line:
+                    slope = (y1-y2)/(x1-x2)
+                    if slope > 3/10:
+                        if x1 > 450 :
+                            y_int = y2 - (slope*x2)                    
+                            Rslope.append(slope)
+                            right_int.append(y_int)
+                        else: None                
+                    elif slope < -3/10:
+                        if x1 < 600:
+                            y_int = y2 - (slope*x2)                    
+                            Lslope.append(slope)
+                            left_int.append(y_int)    
+            #Im looking past 20 frams to average the slope down. Might be causing some crashing error 
+            right_avg_slope = np.mean(Rslope[-20:])
+            left_avg_slope = np.mean(Lslope[-20:])
+            right_avg_int = np.mean(right_int[-20:])
+            left_avg_int = np.mean(left_int[-20:])
+            
+            
+            try:
+                left1 = (0.65*img.shape[0] - left_avg_int)/left_avg_slope
+                left2 = (img.shape[0] - left_avg_int)/left_avg_slope
+
+                right1 = (0.65*img.shape[0] - right_avg_int)/right_avg_slope
+                right2 = (img.shape[0] - right_avg_int)/right_avg_slope
+
+                point = np.array([[left1, 0.65*img.shape[0]],[left2, img.shape[0]],[right2, img.shape[0]],[right1, 0.65*img.shape[0]]], np.int32)
+                point = point.reshape((-1,1,2))
+                cv2.fillPoly(img,[point],(0,200,0))      
+                
+                
+                cv2.line(img, (int(left1), int(0.65*img.shape[0])), (int(left2), int(img.shape[0])), [255,0,0], 10)
+                cv2.line(img, (int(right1), int(0.65*img.shape[0])), (int(right2), int(img.shape[0])), [255,0,0], 10)
+            except ValueError:
+
+                pass
+
+        def hough_lines(img):
+            height = img.shape[0]
+            width= img.shape[1]
+            lines = cv2.HoughLinesP(img, 1, np.pi/180, 20, np.array([]), minLineLength= 15, maxLineGap=130)
+            line_img = np.zeros((height, width, 3), dtype=np.uint8)
+            line_draw(line_img, lines)
+            return line_img
+
+        ''' For Testing Images'''
+        # image = cv2.imread("Tp_images\image6.jpg")
+        # copy_image = np.copy(image)
+        # canny = canny_detect(copy_image)
+        # cropped_image = ROI(canny)
+        # houghed = linedetect(cropped_image)
+        # combined = cv2.addWeighted(image,0.8,houghed,1.0,0.0)
+        # cv2.imshow('hello', combined)
+        # cv2.waitKey(0)
+        
+        cap = cv2.VideoCapture(data.video)   #"Tp_images\project_video.mp4"
+        while(cap.isOpened()):
+            _, frame = cap.read()
+           
+         
+            # Detects cars of different sizes in the input image
+            canny = canny_detect(frame)
+            cropped_image = ROI(canny)
+            houghed = hough_lines(cropped_image)
+            combined = cv2.addWeighted(frame,0.8,houghed,1.0,0.0)
+            cv2.imshow('hello', combined)
+            if cv2.waitKey(1) == 27:
+                break
+    elif event.keysym == 't' and data.isStart == True:
+
+        cap = cv2.VideoCapture('Tp_images\project_video.mp4')
+         
+        # Trained XML classifiers describes some features of some object we want to detect
+        #!!DOWNLOADED FROM : https://github.com/shaanhk/New-GithubTest/blob/master/cars.xml!!#
+        car_cascade = cv2.CascadeClassifier('cars.xml')
+         
+        while True:
+
+            # reads frames from a video
+            ret, frames = cap.read()
+             
+            # convert to gray scale of each frames
+            gray = cv2.cvtColor(frames, cv2.COLOR_BGR2GRAY)
+             
+         
+            # Detects cars of different sizes in the input image
+            cars = car_cascade.detectMultiScale(gray, 1.1, 1)
+             
+            # To draw a rectangle in each cars
+            for (x,y,w,h) in cars:
+                cv2.rectangle(frames,(x,y),(x+w,y+h),(0,0,255),2)
+         
+            # Display frames in a window 
+            cv2.imshow('video2', frames)
+             
+            # Wait for Esc key to stop
+            if cv2.waitKey(33) == 27:
+                break
+         
+        cv2.destroyAllWindows() 
+    elif event.keysym == 'y' and data.isStart == True:
+        def canny_detect(img):
+            grayimg = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            blur = cv2.GaussianBlur(grayimg,(5,5),0)
+            cannyimg = cv2.Canny(blur,50,10)
+            return cannyimg
+        def ROI(img):
+            width = int(img.shape[1])
+            height = int(img.shape[0])
+            shape = np.array([[0, height], [width, height], [int(0.55*width), int(0.6*height)], [int(0.45*width), int(0.6*height)]])
+            mask = np.zeros_like(img)
+
+            if len(img.shape) > 2:
+
+                numChan = img.shape[2]
+                black_mask = (255,) * numChan
+            else:
+                black_mask = 255
+
+                cv2.fillPoly(mask, np.int32([shape]), black_mask)
+                masked = cv2.bitwise_and(img, mask)
+                return masked
+
+        def line_draw(img, lines, thickness=5):
+            Rslope, Lslope, right_int, left_int = [],[],[],[]
+            
+            for line in lines:
+                for x1,y1,x2,y2 in line:
+                    slope = (y1-y2)/(x1-x2)
+                    if slope > 3/10:
+                        if x1 > 450 :
+                            y_int = y2 - (slope*x2)                    
+                            Rslope.append(slope)
+                            right_int.append(y_int)
+                        else: None                
+                    elif slope < -3/10:
+                        if x1 < 600:
+                            y_int = y2 - (slope*x2)                    
+                            Lslope.append(slope)
+                            left_int.append(y_int)    
+                           
+            left_avg_slope = np.mean(Lslope[-20:])
+            left_avg_int = np.mean(left_int[-20:])
+            
+            right_avg_slope = np.mean(Rslope[-20:])
+            right_avg_int = np.mean(right_int[-20:])
+            
+            try:
+                left1 = (0.65*img.shape[0] - left_avg_int)/left_avg_slope
+                left2 = (img.shape[0] - left_avg_int)/left_avg_slope
+
+                right1 = (0.65*img.shape[0] - right_avg_int)/right_avg_slope
+                right2 = (img.shape[0] - right_avg_int)/right_avg_slope
+
+                point = np.array([[left1, 0.65*img.shape[0]],[left2, img.shape[0]],[right2, img.shape[0]],[right1, 0.65*img.shape[0]]], np.int32)
+                point = point.reshape((-1,1,2))
+                cv2.fillPoly(img,[point],(0,200,0))      
+                
+                
+                cv2.line(img, (int(left1), int(0.65*img.shape[0])), (int(left2), int(img.shape[0])), [255,0,0], 10)
+                cv2.line(img, (int(right1), int(0.65*img.shape[0])), (int(right2), int(img.shape[0])), [255,0,0], 10)
+            except ValueError:
+
+                pass
+
+
+
+        def hough_lines(img):
+            height = img.shape[0]
+            width= img.shape[1]
+            lines = cv2.HoughLinesP(img, 1, np.pi/180, 20, np.array([]), minLineLength= 20, maxLineGap=120)
+            line_img = np.zeros((height, width, 3), dtype=np.uint8)
+            line_draw(line_img, lines)
+            return line_img
+
+
+
+        ''' For Testing Images'''
+        # image = cv2.imread("Tp_images\image6.jpg")
+        # copy_image = np.copy(image)
+        # canny = canny_detect(copy_image)
+        # cropped_image = ROI(canny)
+        # houghed = linedetect(cropped_image)
+        # combined = cv2.addWeighted(image,0.8,houghed,1.0,0.0)
+        # cv2.imshow('hello', combined)
+        # cv2.waitKey(0)
+
+
+        
+        cap = cv2.VideoCapture(data.video)   #"Tp_images\project_video.mp4"
+        car_cascade = cv2.CascadeClassifier('cars.xml')
+        while(cap.isOpened()):
+            _, frame = cap.read()
+           
+         
+            # Detects cars of different sizes in the input image
+            canny = canny_detect(frame)
+            cars = car_cascade.detectMultiScale(canny, 1.1, 1)
+             
+            # To draw a rectangle in each cars
+            for (x,y,w,h) in cars:
+                cv2.rectangle(frame,(x,y),(x+w,y+h),(0,0,255),2)
+
+            cropped_image = ROI(canny)
+            houghed = hough_lines(cropped_image)
+            combined = cv2.addWeighted(frame,0.8,houghed,1.0,0.0)
+            cv2.imshow('hello', combined)
+            if cv2.waitKey(33) == 27:
+                break
+
+
+###############################################################################33
+        
+
+        
+            
+
+def redrawAll(canvas, data):
+    # draw in canvas
+    canvas.create_rectangle(data.width-data.margin,data.height-data.margin,
+        data.margin,data.margin, fill = '#E4DBBF')
+    canvas.create_text(data.width//2, data.margin*3, text = "Welcome to Lane Detection!", font = 'Arial 15')
+    canvas.create_text(data.width//2,data.margin*5, text = "Press 's' to start \nPressed 'h' for help", font = 'Arial 15 bold')
+    if data.isHelper == True:
+        if len(data.helper) != 0:
+            x1,y1,x2,y2,color,p,q,text = data.helper[0]
+            canvas.create_rectangle(x1,y1,x2,y2, fill = color)
+            canvas.create_text(p,q,text = text, font = 'Arial 15 bold')
+    if len(data.startScreen) != 0:
+        x1,y1,x2,y2,color,p,q,text = data.startScreen[0]
+        canvas.create_rectangle(x1,y1,x2,y2, fill = color)
+        canvas.create_text(p,q,text = text, fill = '#e9e9e9',font = 'Arial 15 bold')
+    if len(data.chooseScreen) != 0:
+        x1,y1,x2,y2,color,p,q,text = data.chooseScreen[0]
+        canvas.create_rectangle(x1,y1,x2,y2, fill = '#EDEDE4')
+        canvas.create_text(data.width/2,data.width/3,text = text,fill = '#F74906',font = 'Arial 15 bold')
+
+
+####################################
+# use the run function as-is
+####################################
+
+def run(width=300, height=300):
+    
+#Things for TP3
+    #pointcloud
+    #car detection
+    #UI improved
+    #curved
+    #nueral nets car detect
+
+
+    def redrawAllWrapper(canvas, data):
+        canvas.delete(ALL)
+        canvas.create_rectangle(0, 0, data.width, data.height,
+                                fill='white', width=0)
+        redrawAll(canvas, data)
+        canvas.update()
+
+    def mousePressedWrapper(event, canvas, data):
+        mousePressed(event, data)
+        redrawAllWrapper(canvas, data)
+
+    def keyPressedWrapper(event, canvas, data):
+        keyPressed(event, data)
+        redrawAllWrapper(canvas, data)
+
+    # Set up data and call init
+    class Struct(object): pass
+    data = Struct()
+    data.width = width
+    data.height = height
+    root = Tk()
+    root.resizable(width=False, height=False) # prevents resizing window
+    init(data)
+    # create the root and the canvas
+    canvas = Canvas(root, width=data.width, height=data.height)
+    canvas.configure(bd=0, highlightthickness=0)
+    canvas.pack()
+    # set up events
+    root.bind("<Button-1>", lambda event:
+                            mousePressedWrapper(event, canvas, data))
+    root.bind("<Key>", lambda event:
+                            keyPressedWrapper(event, canvas, data))
+    redrawAllWrapper(canvas, data)
+    # and launch the app
+    root.mainloop()  # blocks until window is closed
+    print("bye!")
+
+run(800, 600)
